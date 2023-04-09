@@ -24,6 +24,9 @@ DEBUG = 'RENDER' not in os.environ
 DOMAIN = os.environ.get('DOMAIN')
 POLYGONSCAN_API_KEYS = env.str('POLYGONSCAN_API_KEYS').split(',')
 
+AUTH_MS_URL = os.environ.get('AUTH_MS_URL')
+CRYPTOGRAPHY_MS_URL = os.environ.get('CRYPTOGRAPHY_MS_URL')
+
 OWNER_WALLET=os.environ.get('OWNER_WALLET')
 OWNER_WALLET_KEY=os.environ.get('OWNER_WALLET_KEY')
 URIDIUM_WALLET=os.environ.get('URIDIUM_WALLET')

@@ -1,3 +1,4 @@
+import os
 from rest_framework_api.views import  StandardAPIView
 from rest_framework import status
 from rest_framework.response import Response
@@ -30,6 +31,8 @@ import jwt
 from io import StringIO
 from django.conf import settings
 secret_key = settings.SECRET_KEY
+auth_ms_url = settings.AUTH_MS_URL
+cryptography_ms_url = settings.CRYPTOGRAPHY_MS_URL
 import rsa
 import tempfile
 import os
@@ -42,10 +45,10 @@ from asgiref.sync import async_to_sync
 
 
 def get_contract_abi(address):
-    if DEBUG:
-        url = f'https://api-goerli.etherscan.io/api?module=contract&action=getabi&address={address}&apikey={ETHERSCAN_API_KEY}'
-    else:
-        url = f'https://api.etherscan.io/api?module=contract&action=getabi&address={address}&apikey={ETHERSCAN_API_KEY}'
+    url = f'https://api-goerli.etherscan.io/api?module=contract&action=getabi&address={address}&apikey={ETHERSCAN_API_KEY}'
+    # if DEBUG:
+    # else:
+    #     url = f'https://api.etherscan.io/api?module=contract&action=getabi&address={address}&apikey={ETHERSCAN_API_KEY}'
 
     response = requests.get(url)
     data = response.json()
@@ -56,10 +59,10 @@ def get_contract_abi(address):
         return None
 
 def get_polygon_contract_abi(address):
-    if DEBUG:
-        url = f'https://api-testnet.polygonscan.com/api?module=contract&action=getabi&address={address}&apikey={POLYGONSCAN_API_KEY}'
-    else:
-        url = f'https://api.polygonscan.com/api?module=contract&action=getabi&address={address}&apikey={POLYGONSCAN_API_KEY}'
+    url = f'https://api-testnet.polygonscan.com/api?module=contract&action=getabi&address={address}&apikey={POLYGONSCAN_API_KEY}'
+    # if DEBUG:
+    # else:
+    #     url = f'https://api.polygonscan.com/api?module=contract&action=getabi&address={address}&apikey={POLYGONSCAN_API_KEY}'
 
     response = requests.get(url)
     data = response.json()
@@ -69,10 +72,10 @@ def get_polygon_contract_abi(address):
         return None
 
 def get_polygon_contract_bytecode(address):
-    if DEBUG:
-        url = f'https://api-testnet.polygonscan.com/api?module=proxy&action=eth_getCode&address={address}&apikey={POLYGONSCAN_API_KEY}'
-    else:
-        url = f'https://api.polygonscan.com/api?module=proxy&action=eth_getCode&address={address}&apikey={POLYGONSCAN_API_KEY}'
+    url = f'https://api-testnet.polygonscan.com/api?module=proxy&action=eth_getCode&address={address}&apikey={POLYGONSCAN_API_KEY}'
+    # if DEBUG:
+    # else:
+    #     url = f'https://api.polygonscan.com/api?module=proxy&action=eth_getCode&address={address}&apikey={POLYGONSCAN_API_KEY}'
 
     response = requests.get(url)
     data = response.json()
@@ -94,11 +97,11 @@ def validate_token(request):
 
 def decrypt_private_key(address):
     # Get wallet information from the backend API
-    wallet_request = requests.get(f'http://host.docker.internal:8000/api/wallets/get/?address={address}').json()
+    wallet_request = requests.get(f'{auth_ms_url}/api/wallets/get/?address={address}').json()
     base64_encoded_private_key_string = wallet_request['results']['private_key']
     
     # Get RSA private key from the backend API
-    rsa_private_key_string = requests.get('http://host.docker.internal:8019/api/crypto/key/').json()
+    rsa_private_key_string = requests.get(f"{cryptography_ms_url}/api/crypto/key/").json()
     
     # Create a temporary file to store the RSA private key
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
@@ -121,11 +124,11 @@ def decrypt_private_key(address):
 
 def decrypt_polygon_private_key(address):
     # Get wallet information from the backend API
-    wallet_request = requests.get(f'http://host.docker.internal:8000/api/wallets/get/?address={address}').json()
+    wallet_request = requests.get(f'{auth_ms_url}/api/wallets/get/?address={address}').json()
     base64_encoded_private_key_string = wallet_request['results']['polygon_private_key']
     
     # Get RSA private key from the backend API
-    rsa_private_key_string = requests.get('http://host.docker.internal:8019/api/crypto/key/').json()
+    rsa_private_key_string = requests.get(f"{cryptography_ms_url}/api/crypto/key/").json()
     
     # Create a temporary file to store the RSA private key
     with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
@@ -193,11 +196,11 @@ class GetNFTDeploymentPriceView(StandardAPIView):
 
 def check_verify_polygon_contract(result):
     
-    url = 'https://api.polygonscan.com/api'
-    if DEBUG:
-        url = f'https://api-testnet.polygonscan.com/api'
-    else:
-        url = f'https://api.polygonscan.com/api'
+    url = 'https://api-testnet.polygonscan.com/api'
+    # if DEBUG:
+    #     url = f'https://api-testnet.polygonscan.com/api'
+    # else:
+    #     url = f'https://api.polygonscan.com/api'
 
     payload = {
         'apikey': POLYGONSCAN_API_KEY,
@@ -215,11 +218,11 @@ def check_verify_polygon_contract(result):
 def verify_polygon_contract(api_keys, contract_address, source_code, contract_name, compiler_version, constructor_arguments):
     random.shuffle(api_keys)
     for api_key in api_keys:
-        url = 'https://api.polygonscan.com/api'
-        if DEBUG:
-            url = f'https://api-testnet.polygonscan.com/api'
-        else:
-            url = f'https://api.polygonscan.com/api'
+        url = 'https://api-testnet.polygonscan.com/api'
+        # if DEBUG:
+        #     url = f'https://api-testnet.polygonscan.com/api'
+        # else:
+        #     url = f'https://api.polygonscan.com/api'
 
         payload = {
             'apikey': api_key,

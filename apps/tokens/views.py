@@ -19,6 +19,10 @@ DEBUG=settings.DEBUG
 import jwt
 from django.conf import settings
 secret_key = settings.SECRET_KEY
+
+auth_ms_url = settings.AUTH_MS_URL
+cryptography_ms_url = settings.CRYPTOGRAPHY_MS_URL
+
 import rsa
 import tempfile
 import os
@@ -29,10 +33,10 @@ from asgiref.sync import async_to_sync
 
 
 def get_polygon_contract_abi(address):
-    if DEBUG:
-        url = f'https://api-testnet.polygonscan.com/api?module=contract&action=getabi&address={address}&apikey={POLYGONSCAN_API_KEY}'
-    else:
-        url = f'https://api.polygonscan.com/api?module=contract&action=getabi&address={address}&apikey={POLYGONSCAN_API_KEY}'
+    url = f'https://api-testnet.polygonscan.com/api?module=contract&action=getabi&address={address}&apikey={POLYGONSCAN_API_KEY}'
+    # if DEBUG:
+    # else:
+    #     url = f'https://api.polygonscan.com/api?module=contract&action=getabi&address={address}&apikey={POLYGONSCAN_API_KEY}'
 
     response = requests.get(url)
     data = response.json()
@@ -42,10 +46,10 @@ def get_polygon_contract_abi(address):
         return None
 
 def get_contract_abi(address):
-    if DEBUG:
-        url = f'https://api-goerli.etherscan.io/api?module=contract&action=getabi&address={address}&apikey={ETHERSCAN_API_KEY}'
-    else:
-        url = f'https://api.etherscan.io/api?module=contract&action=getabi&address={address}&apikey={ETHERSCAN_API_KEY}'
+    url = f'https://api-goerli.etherscan.io/api?module=contract&action=getabi&address={address}&apikey={ETHERSCAN_API_KEY}'
+    # if DEBUG:
+    # else:
+    #     url = f'https://api.etherscan.io/api?module=contract&action=getabi&address={address}&apikey={ETHERSCAN_API_KEY}'
 
     response = requests.get(url)
     data = response.json()
@@ -222,10 +226,10 @@ class SendTokensView(StandardAPIView):
             contract = web3.eth.contract(address=tokenAddress, abi=abi)
 
         # 2) Decrypt private Key
-        wallet_request = requests.get('http://host.docker.internal:8000/api/wallets/get/?address='+payload['address']).json()
+        wallet_request = requests.get(f"{auth_ms_url}/api/wallets/get/?address="+payload['address']).json()
         base64_encoded_private_key_string  = wallet_request['results']['private_key']
 
-        rsa_private_key_string = requests.get('http://host.docker.internal:8019/api/crypto/key/').json()
+        rsa_private_key_string = requests.get(f"{cryptography_ms_url}/api/crypto/key/").json()
         # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
             # Write the contents of rsa_private_key_string to the file
@@ -317,10 +321,10 @@ class SendTokensPolygonView(StandardAPIView):
             contract = polygon_web3.eth.contract(address=tokenAddress, abi=abi)
 
         # 2) Decrypt private Key
-        wallet_request = requests.get('http://host.docker.internal:8000/api/wallets/get/?address='+payload['address']).json()
+        wallet_request = requests.get(f"{auth_ms_url}/api/wallets/get/?address="+payload['address']).json()
         base64_encoded_private_key_string  = wallet_request['results']['polygon_private_key']
 
-        rsa_private_key_string = requests.get('http://host.docker.internal:8019/api/crypto/key/').json()
+        rsa_private_key_string = requests.get(f"{cryptography_ms_url}/api/crypto/key/").json()
         # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
             # Write the contents of rsa_private_key_string to the file
