@@ -1,0 +1,17 @@
+version: '3.8'
+services:
+  # Django app
+  backend_cryptocurrency:
+    container_name: boomslag_ms_cryptocurrency
+    build: .
+    command: >
+      sh -c "python manage.py runserver 0.0.0.0:8020"
+    volumes:
+      - .:/app
+    ports:
+      - 8020:8020
+  # Event Queue Kafka
+  queue_cryptocurrency:
+    build: .
+    command: >
+      sh -c "python consumer.py"
