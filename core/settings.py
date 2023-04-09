@@ -19,7 +19,7 @@ environ.Env.read_env()
 SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = 'RENDER' not in os.environ
+DEBUG = os.environ.get('DEBUG')
 
 DOMAIN = os.environ.get('DOMAIN')
 POLYGONSCAN_API_KEYS = env.str('POLYGONSCAN_API_KEYS').split(',')
@@ -255,8 +255,6 @@ TICKET_CONTRACT = os.environ.get('TICKET_CONTRACT')
 AUCTIONS_CONTRACT = os.environ.get('AUCTIONS_CONTRACT')
 AFFILIATES_CONTRACT = os.environ.get('AFFILIATES_CONTRACT')
 BOOTH_CONTRACT = os.environ.get('BOOTH_CONTRACT')
-
-OWNER_WALLET = os.environ.get('OWNER_WALLET')
 
 FILE_UPLOAD_PERMISSIONS = 0o640
 
