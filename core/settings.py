@@ -19,7 +19,8 @@ environ.Env.read_env()
 SECRET_KEY = os.environ.get('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = os.environ.get('DEBUG')
+
+DEBUG = 'RENDER' not in os.environ
 
 DOMAIN = os.environ.get('DOMAIN')
 POLYGONSCAN_API_KEYS = env.str('POLYGONSCAN_API_KEYS').split(',')
@@ -41,6 +42,9 @@ CSRF_COOKIE_SECURE = False
 SESSION_COOKIE_SECURE = False
 
 ALLOWED_HOSTS = env.list('ALLOWED_HOSTS_DEV')
+RENDER_EXTERNAL_HOSTNAME = os.environ.get('RENDER_EXTERNAL_HOSTNAME')
+if RENDER_EXTERNAL_HOSTNAME:
+    ALLOWED_HOSTS.append(RENDER_EXTERNAL_HOSTNAME)
 CORS_ORIGIN_WHITELIST = env.list('CORS_ORIGIN_WHITELIST_DEV')
 CSRF_TRUSTED_ORIGINS = env.list('CSRF_TRUSTED_ORIGINS_DEV')
 
