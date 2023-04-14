@@ -23,10 +23,12 @@ SECRET_KEY = os.environ.get('SECRET_KEY')
 DEBUG = 'RENDER' not in os.environ
 
 DOMAIN = os.environ.get('DOMAIN')
-POLYGONSCAN_API_KEYS = env.str('POLYGONSCAN_API_KEYS').split(',')
 
 AUTH_MS_URL = os.environ.get('AUTH_MS_URL')
 CRYPTOGRAPHY_MS_URL = os.environ.get('CRYPTOGRAPHY_MS_URL')
+
+POLYGONSCAN_API_KEYS = env.str('POLYGONSCAN_API_KEYS').split(',')
+
 
 OWNER_WALLET=os.environ.get('OWNER_WALLET')
 OWNER_WALLET_KEY=os.environ.get('OWNER_WALLET_KEY')
@@ -124,15 +126,27 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'core.wsgi.application'
 ASGI_APPLICATION = 'core.asgi.application'
+# CHANNEL_LAYERS = {
+#     'default': {
+#         'BACKEND': 'channels_redis.core.RedisChannelLayer',
+#         'CONFIG': {
+#             "hosts": [('redis', 6379)],
+#         },
+#     },
+# }
+# CHANNEL_LAYERS = {
+#     'default': {
+#         'BACKEND': 'channels_redis.core.RedisChannelLayer',
+#         'CONFIG': {
+#             "hosts": [({REDIS_HOST},{REDIS_PORT})],
+#         },
+#     },
+# }
 CHANNEL_LAYERS = {
-    'default': {
-        'BACKEND': 'channels_redis.core.RedisChannelLayer',
-        'CONFIG': {
-            "hosts": [('redis', 6379)],
-        },
-    },
+    "default": {
+        "BACKEND": "channels.layers.InMemoryChannelLayer"
+    }
 }
-
 
 # Database
 # https://docs.djangoproject.com/en/3.2/ref/settings/#databases

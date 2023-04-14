@@ -8,6 +8,14 @@ from django.db.models.query_utils import Q
 import requests
 from time import sleep
 from django.conf import settings
+from django.core.cache import cache
+
+pdm_goerli = settings.PDM_ADDRESS_GOERLI
+pdm_mainnet = settings.PDM_ADDRESS_MAINNET
+
+galr_goerli = settings.GALR_ADDRESS_GOERLI
+galr_mainnet = settings.GALR_ADDRESS_MAINNET
+
 from web3 import Web3
 infura_url=settings.INFURA_URL
 polygon_url=settings.POLYGON_RPC
@@ -22,7 +30,8 @@ secret_key = settings.SECRET_KEY
 
 auth_ms_url = settings.AUTH_MS_URL
 cryptography_ms_url = settings.CRYPTOGRAPHY_MS_URL
-
+import aiohttp
+from asgiref.sync import async_to_sync
 import rsa
 import tempfile
 import os
@@ -62,7 +71,6 @@ def get_contract_abi(address):
 
 def validate_token(request):
     token = request.META.get('HTTP_AUTHORIZATION').split()[1]
-
     try:
         payload = jwt.decode(token, secret_key, algorithms=['HS256'])
     except jwt.ExpiredSignatureError:
@@ -80,51 +88,79 @@ class ListTokensView(StandardAPIView):
 
     def get(self, request, *args, **kwargs):
         payload = validate_token(request)
-        tokenList = TokenList.objects.get(wallet=payload['address'])
-        tokens = tokenList.tokens.all()
 
-        # Get filter parameters
-        name = request.query_params.getlist('name', None)
-        symbol = request.query_params.getlist('symbol', None)
-        address = request.query_params.getlist('address', None)
-        decimals = request.query_params.getlist('decimals', None)
-        search = request.query_params.get('search', None)
+        # Generate a cache key based on the request parameters and wallet address
+        cache_key = f"tokens_{payload['user_id']}_{request.GET.urlencode()}"
+        cached_data = cache.get(cache_key)
 
-        if name and 'null' not in name:
-            q_obj = Q()
-            for n in name:
-                q_obj |= Q(name=n)
-            tokens = tokens.filter(q_obj)
+        if cached_data:
+            # If cached data is available, use it
+            return self.paginate_response(request, cached_data)
+        else:
+            # user_response = await self.get_user_response(payload['user_id'])
+            wallet_response = requests.get(f'{auth_ms_url}/api/users/get/wallet/' + payload['user_id'] + '/').json()
+            wallet_address= wallet_response.get('results').get('address')
+            tokenList, created = TokenList.objects.get_or_create(wallet=wallet_address)
 
-        if symbol and 'null' not in symbol:
-            q_obj = Q()
-            for n in symbol:
-                q_obj |= Q(symbol=n)
-            tokens = tokens.filter(q_obj)
+            if created:
+                # Add the predefined tokens
+                predefined_tokens = [
+                    {'name': 'Praedium', 'symbol': 'PDM', 'address': pdm_goerli if settings.DEBUG else pdm_mainnet, 'decimals':18, 'network': 'Polygon'},
+                    {'name': 'Galerium', 'symbol': 'GALR', 'address': galr_goerli if settings.DEBUG else galr_mainnet, 'decimals':18, 'network': 'Polygon'},
+                    {'name': 'Ethereum', 'symbol': 'ETH', 'address': '0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE', 'decimals':18, 'network': 'Ethereum'},
+                    {'name': 'Matic', 'symbol': 'MATIC', 'address': '0x0000000000000000000000000000000000001010', 'decimals':18, 'network': 'Polygon'}
+                ]
+                for token_data in predefined_tokens:
+                    token, created = Token.objects.get_or_create(**token_data)
+                    tokenList.tokens.add(token)
+                tokenList.save()
+                
+            tokens = tokenList.tokens.all()
 
-        if address and 'null' not in address:
-            q_obj = Q()
-            for n in address:
-                q_obj |= Q(address=n)
-            tokens = tokens.filter(q_obj)
+            # Get filter parameters
+            name = request.query_params.getlist('name', None)
+            symbol = request.query_params.getlist('symbol', None)
+            address = request.query_params.getlist('address', None)
+            decimals = request.query_params.getlist('decimals', None)
+            search = request.query_params.get('search', None)
 
-        if decimals and 'null' not in decimals:
-            q_obj = Q()
-            for n in decimals:
-                q_obj |= Q(decimals=n)
-            tokens = tokens.filter(q_obj)
+            if name and 'null' not in name:
+                q_obj = Q()
+                for n in name:
+                    q_obj |= Q(name=n)
+                tokens = tokens.filter(q_obj)
 
-        if search and 'null' not in search:
-            tokens = tokens.filter(
-                                    Q(name__icontains=search) | 
-                                    Q(symbol__icontains=search) | 
-                                    Q(address__icontains=search) | 
-                                    Q(decimals__icontains=search) 
-                                )
+            if symbol and 'null' not in symbol:
+                q_obj = Q()
+                for n in symbol:
+                    q_obj |= Q(symbol=n)
+                tokens = tokens.filter(q_obj)
 
-        serializer = TokenSerializer(tokens, many=True)
-        return self.paginate_response(request, serializer.data)
-        # return self.send_response([],status=status.HTTP_200_OK)
+            if address and 'null' not in address:
+                q_obj = Q()
+                for n in address:
+                    q_obj |= Q(address=n)
+                tokens = tokens.filter(q_obj)
+
+            if decimals and 'null' not in decimals:
+                q_obj = Q()
+                for n in decimals:
+                    q_obj |= Q(decimals=n)
+                tokens = tokens.filter(q_obj)
+
+            if search and 'null' not in search:
+                tokens = tokens.filter(
+                                        Q(name__icontains=search) | 
+                                        Q(symbol__icontains=search) | 
+                                        Q(address__icontains=search) | 
+                                        Q(decimals__icontains=search) 
+                                    )
+            serializer = TokenSerializer(tokens, many=True)
+            serialized_data = serializer.data
+            # Cache the serialized data for 5 minutes (300 seconds)
+            cache.set(cache_key, serialized_data, 300)
+            
+            return self.paginate_response(request, serialized_data)
 
 
 class TokenBalancesView(StandardAPIView):
@@ -146,7 +182,7 @@ class TokenBalancesView(StandardAPIView):
             # Get the balance of the token using Web3
             contract = web3.eth.contract(address=token_address, abi=abi)
             
-            balance_wei = contract.functions.balanceOf(payload['address']).call()
+            balance_wei = contract.functions.balanceOf(data['address']).call()
             balance_token = Web3.fromWei(balance_wei, 'ether')
 
             # Add the balance to the balances list
@@ -155,7 +191,7 @@ class TokenBalancesView(StandardAPIView):
                 'balance': balance_token
             })
         # Get the balance of ETH using Web3
-        eth_balance_wei = web3.eth.get_balance(payload['address'])
+        eth_balance_wei = web3.eth.get_balance(data['address'])
         eth_balance_token = Web3.fromWei(eth_balance_wei, 'ether')
 
         # Add the balance of ETH to the balances list
@@ -188,7 +224,7 @@ class PolygonTokenBalancesView(StandardAPIView):
 
             if token_symbol == 'MATIC':
                 # Get the balance of MATIC using Web3
-                matic_balance_wei = polygon_web3.eth.get_balance(payload['polygon_address'])
+                matic_balance_wei = polygon_web3.eth.get_balance(data['polygon_address'])
                 balance_token = Web3.fromWei(matic_balance_wei, 'ether')
                 print(matic_balance_wei)
             else:
@@ -200,7 +236,7 @@ class PolygonTokenBalancesView(StandardAPIView):
 
                 # Get the balance of the token using Web3
                 contract = polygon_web3.eth.contract(address=token_address, abi=abi)
-                balance_wei = contract.functions.balanceOf(payload['polygon_address']).call()
+                balance_wei = contract.functions.balanceOf(data['polygon_address']).call()
                 balance_token = Web3.fromWei(balance_wei, 'ether')
 
             # Add the balance to the balances list
@@ -217,6 +253,10 @@ class SendTokensView(StandardAPIView):
     def post(self, request, *args, **kwargs):
         data=request.data
         payload = validate_token(request)
+        if not payload['user_id']:
+            return self.send_error('Login expired')
+        
+        
         
         # 1) Get token ABI and Contract
         token_symbol = data['token']['symbol']
@@ -224,11 +264,11 @@ class SendTokensView(StandardAPIView):
             tokenAddress = data['token']['address']
             abi = get_contract_abi(tokenAddress)
             contract = web3.eth.contract(address=tokenAddress, abi=abi)
+        
 
         # 2) Decrypt private Key
-        wallet_request = requests.get(f"{auth_ms_url}/api/wallets/get/?address="+payload['address']).json()
+        wallet_request = requests.get(f"{auth_ms_url}/api/wallets/get/?address="+data['fromAccount']).json()
         base64_encoded_private_key_string  = wallet_request['results']['private_key']
-
         rsa_private_key_string = requests.get(f"{cryptography_ms_url}/api/crypto/key/").json()
         # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
@@ -243,14 +283,17 @@ class SendTokensView(StandardAPIView):
         decrypted_bytes = rsa.decrypt(decoded_bytes, privkey)
         # Convert the decrypted bytes to a string
         wallet_private_key = decrypted_bytes.decode('ascii')
+
         # 3) Get correct Amount to send in Ether
         amount = data['amount']
+
         # 4) Get gas Fee
         req = requests.get('https://ethgasstation.info/json/ethgasAPI.json')
         t = json.loads(req.content)
         gas_fee=t[data['speed']]
+
         # 5) Sign transaction
-        user_address = payload['address']
+        user_address = data['fromAccount']
         to_address  = data['toAccount']
         nonce = web3.eth.getTransactionCount(user_address)
         if token_symbol != 'ETH':
@@ -276,7 +319,7 @@ class SendTokensView(StandardAPIView):
             tx_hash = web3.eth.sendRawTransaction(signed_tx.rawTransaction)
             
             channel_layer = get_channel_layer()
-            room_group_name = f"send_tokens_{payload['address']}"
+            room_group_name = f"send_tokens_{data['fromAccount']}"
             async_to_sync(channel_layer.group_send)(
                 room_group_name,
                 {
@@ -306,13 +349,14 @@ class SendTokensView(StandardAPIView):
 
         return self.send_response(web3.toHex(tx_hash), status=status.HTTP_200_OK)
 
-
 class SendTokensPolygonView(StandardAPIView):
     permission_classes = (permissions.AllowAny,)
     def post(self, request, *args, **kwargs):
         data=request.data
         payload = validate_token(request)
-        
+        if not payload['user_id']:
+            return self.send_error('Login expired')
+
         # 1) Get token ABI and Contract
         token_symbol = data['token']['symbol']
         if(token_symbol!='MATIC'):
@@ -321,9 +365,8 @@ class SendTokensPolygonView(StandardAPIView):
             contract = polygon_web3.eth.contract(address=tokenAddress, abi=abi)
 
         # 2) Decrypt private Key
-        wallet_request = requests.get(f"{auth_ms_url}/api/wallets/get/?address="+payload['address']).json()
+        wallet_request = requests.get(f"{auth_ms_url}/api/wallets/get_polygon/?address={data['fromAccount']}" ).json()
         base64_encoded_private_key_string  = wallet_request['results']['polygon_private_key']
-
         rsa_private_key_string = requests.get(f"{cryptography_ms_url}/api/crypto/key/").json()
         # Create a temporary file
         with tempfile.NamedTemporaryFile(mode='w', delete=False) as temp_file:
@@ -348,7 +391,7 @@ class SendTokensPolygonView(StandardAPIView):
         gas_fee=t[data['speed']]
 
         # 5) Sign transaction
-        user_address = payload['polygon_address']
+        user_address = data['fromAccount']
         to_address  = data['toAccount']
         nonce = polygon_web3.eth.getTransactionCount(user_address)
 
@@ -362,19 +405,19 @@ class SendTokensPolygonView(StandardAPIView):
             # If the token is not ETH, we need to use the transfer function of the token contract
             transaction = contract.functions.transfer(
                 to_address, polygon_web3.toWei(amount, 'ether')).buildTransaction({
-                    'chainId': 80001,  # Add this line
                     'nonce': nonce,
                     'gas': 200000,
+                    'chainId': 80001,
                     'gasPrice': polygon_web3.toWei(gas_fee, 'gwei')
                 })
         if token_symbol == 'MATIC':
             # If the token is ETH, we can use a simple transaction to send the amount
             transaction = {
-                'chainId': 80001,  # Add this line
                 'nonce': nonce,
                 'to': to_address,
                 'value': polygon_web3.toWei(amount, 'ether'),
                 'gas': 21000,
+                'chainId': 80001,
                 'gasPrice': polygon_web3.toWei(gas_fee, 'gwei'),
             }
 
@@ -383,7 +426,7 @@ class SendTokensPolygonView(StandardAPIView):
             tx_hash = polygon_web3.eth.sendRawTransaction(signed_tx.rawTransaction)
             
             channel_layer = get_channel_layer()
-            room_group_name = f"send_tokens_{payload['address']}"
+            room_group_name = f"send_tokens_{data['fromAccount']}"
             async_to_sync(channel_layer.group_send)(
                 room_group_name,
                 {
@@ -398,7 +441,7 @@ class SendTokensPolygonView(StandardAPIView):
             if 'already known' in str(e):
                 tx_hash = signed_tx.hash
                 channel_layer = get_channel_layer()
-                room_group_name = f"send_tokens_{payload['address']}"
+                room_group_name = f"send_tokens_{data['fromAccount']}"
                 async_to_sync(channel_layer.group_send)(
                     room_group_name,
                     {
@@ -418,8 +461,8 @@ class AddTokenToList(StandardAPIView):
     permission_classes = (permissions.AllowAny,)
     def put(self, request, *args, **kwargs):
         data=request.data
-        payload = validate_token(request)
-        tokenList=TokenList.objects.get(wallet=payload['address'])
+        validate_token(request)
+        tokenList=TokenList.objects.get(wallet=data['userAddress'])
         
         token, created = Token.objects.get_or_create(
             name=data['name'],

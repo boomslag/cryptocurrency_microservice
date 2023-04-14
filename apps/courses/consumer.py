@@ -11,20 +11,6 @@ class DeployNFTConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         # Get UserID
-        token = self.scope["query_string"].decode().split("=")[1]
-        try:
-            payload = jwt.decode(token, secret_key, algorithms=["HS256"])
-            self.user_id = payload["user_id"]
-        except jwt.ExpiredSignatureError:
-            # Handle expired token error
-            await self.close()
-        except jwt.DecodeError:
-            # Handle invalid token error
-            await self.close()
-        except Exception:
-            # Handle other errors
-            await self.close()
-
         self.room_name = self.scope["url_route"]["kwargs"]["room_name"]
         self.room_group_name = "deploy_nft_%s" % self.room_name
 

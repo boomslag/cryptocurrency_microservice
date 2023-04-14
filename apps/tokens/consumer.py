@@ -11,20 +11,7 @@ class SendTokensConsumer(AsyncWebsocketConsumer):
 
     async def connect(self):
         # Get UserID
-        token = self.scope["query_string"].decode().split("=")[1]
-        try:
-            payload = jwt.decode(token, secret_key, algorithms=["HS256"])
-            self.user_id = payload["user_id"]
-        except jwt.ExpiredSignatureError:
-            # Handle expired token error
-            await self.close()
-        except jwt.DecodeError:
-            # Handle invalid token error
-            await self.close()
-        except Exception:
-            # Handle other errors
-            await self.close()
-
+        self.user_id = self.scope['query_string'].decode('utf-8').split('=')[1]
         self.room_name = self.scope["url_route"]["kwargs"]["room_name"]
         self.room_group_name = "send_tokens_%s" % self.room_name
 
