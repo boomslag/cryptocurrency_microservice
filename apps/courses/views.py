@@ -154,7 +154,10 @@ class GetNFTDeploymentPriceView(StandardAPIView):
     permission_classes = (permissions.AllowAny,)
 
     def get(self, request, *args, **kwargs):
-        payload = validate_token(request)
+        validate_token(request)
+
+        user_address = request.GET.get('address', None)
+        user_polygon_address = request.GET.get('polygonAddress', None)
 
         abi = get_polygon_contract_abi(ticket_contract)
 
@@ -162,10 +165,6 @@ class GetNFTDeploymentPriceView(StandardAPIView):
 
         # 3) create contract instance
         contract = polygon_web3.eth.contract(abi=abi, bytecode=bytecode)
-        
-        
-        # Get User Private Key
-        # wallet_private_key = decrypt_private_key(payload['address'])
 
         nftPrice = polygon_web3.toWei(0.01, 'ether')
         nftId = 123
@@ -180,13 +179,13 @@ class GetNFTDeploymentPriceView(StandardAPIView):
             initialStock, 
             royaltyReceiver, 
             royaltyPercentage, 
-            [owner_wallet, payload['address']], 
+            [owner_wallet, user_address], 
             [40, 60],
             uri
         ]
         # 4) Estimate deployment gas cost
         gas_estimate = contract.constructor(*constructor_args).estimateGas({
-            'from': payload['polygon_address']
+            'from': user_polygon_address
         })
 
         deployment_cost = polygon_web3.fromWei(gas_estimate * polygon_web3.eth.gasPrice, 'ether')
@@ -413,6 +412,7 @@ class DeployNFTView(StandardAPIView):
         payload = validate_token(request)
 
         data = request.data
+        print(data)
 
         channel_layer = get_channel_layer()
         room_group_name = f"deploy_nft_{data['tokenId']}"
@@ -431,12 +431,12 @@ class DeployNFTView(StandardAPIView):
         price = float(data['price'])
                 
         # Get User Private Key
-        wallet_private_key = decrypt_polygon_private_key(payload['address'])
+        wallet_private_key = decrypt_polygon_private_key(data['userAddress'])
 
         ticketPrice = polygon_web3.toWei(price, 'ether')
         nftId = int(data['tokenId'])
         initialStock = int(data['stock'])
-        sellerAddress = payload['polygon_address']
+        sellerAddress = data['userPolygonAddress']
         royaltyAddress=sellerAddress
         royaltyPercentage=500# 5% represented in basis points, where 100 is 1%
         uri = f"https://boomslag.com/api/{data['uri']}/nft/"
@@ -459,7 +459,8 @@ class DeployNFTView(StandardAPIView):
         # Combine platform and foundation fees with seller fees and addresses
         payees = [platformFeeAddress, foundationFeeAddress] + seller_addresses
         shares = [platform_percentage, foundation_percentage] + seller_percentages
-
+        print(f"Ticket price: {ticketPrice}, NFT ID: {nftId}, Initial Stock: {initialStock}, Royalty address: {royaltyAddress}, Royalty percentage: {royaltyPercentage}, URI: {uri}, Payees: {payees}, Shares: {shares}")
+        
         #  ======== DEPLOYMENT of NFT Contract ========
         # 1) Load the contract ABI
         ticket_location = os.path.join(settings.BASE_DIR, 'contracts', 'marketplace', 'ticket.sol')
@@ -467,8 +468,9 @@ class DeployNFTView(StandardAPIView):
             contract_json = json.load(f)
         abi = contract_json['abi']
         bytecode = contract_json['bytecode']
+        
 
-        # 2) create contract instance
+        # # 2) create contract instance
         contract = polygon_web3.eth.contract(abi=abi, bytecode=bytecode)
 
         constructorArguments = [
@@ -486,7 +488,7 @@ class DeployNFTView(StandardAPIView):
             {
                 "gasPrice": polygon_web3.eth.gas_price,
                 "from": sellerAddress,
-                "nonce": polygon_web3.eth.getTransactionCount(payload['polygon_address']),
+                "nonce": polygon_web3.eth.getTransactionCount(data['userPolygonAddress']),
                 # "gas": 600000,
             }
         )
@@ -500,6 +502,9 @@ class DeployNFTView(StandardAPIView):
             'contractAddress':txReceipt.get('contractAddress'),
             'gasUsed':txReceipt.get('gasUsed'),
             'transactionHash':transaction_hash
+            # 'contractAddress':'0x123Qwer',
+            # 'gasUsed':'0.0',
+            # 'transactionHash':'0x123Qwer'
         }
 
         contract_address = txReceipt.get('contractAddress')
@@ -581,7 +586,7 @@ class DeployNFTView(StandardAPIView):
             {
                 "from": sellerAddress,
                 "gasPrice": polygon_web3.eth.gas_price,
-                "nonce": polygon_web3.eth.getTransactionCount(payload['polygon_address']),
+                "nonce": polygon_web3.eth.getTransactionCount(data['userPolygonAddress']),
             }
         )
         sign_grant_role_txn = polygon_web3.eth.account.sign_transaction(grant_role_txn, wallet_private_key)
@@ -600,11 +605,11 @@ class DeployNFTView(StandardAPIView):
 class BecomeAffiliateView(StandardAPIView):
     permission_classes = (permissions.AllowAny,)
     def post(self, request, format=None):
-        payload = validate_token(request)
-        polygon_address = payload['polygon_address']
+        validate_token(request)
         data= request.data
+        polygon_address = data['polygonAddress']
         # Build Instance of Contract
-        wallet_private_key = decrypt_polygon_private_key(payload['address'])
+        wallet_private_key = decrypt_polygon_private_key(data['address'])
         ticket_id = data['ticketId']
         # contract_address = data['address']
         # Register NFT in BOOTH Marketplace
@@ -622,7 +627,7 @@ class BecomeAffiliateView(StandardAPIView):
         hasAffiliateRole = affiliate_contract_instance.functions.hasRole(affiliate_role, polygon_address).call()
 
         if not hasAffiliateRole:
-            print(f"Granting affiliate role to {payload['polygon_address']}")
+            print(f"Granting affiliate role to {polygon_address}")
             grant_role_txn = affiliate_contract_instance.functions.grantRole(affiliate_role, polygon_address).buildTransaction(
                 {
                     "from": owner_wallet,
@@ -635,7 +640,7 @@ class BecomeAffiliateView(StandardAPIView):
             grant_role_txReceipt = polygon_web3.eth.wait_for_transaction_receipt(grant_role_txHash)
 
             if grant_role_txReceipt['status'] == 1:
-                print(f"Successfully Granted Affiliate Role to {payload['polygon_address']}.")
+                print(f"Successfully Granted Affiliate Role to {polygon_address}.")
             else:
                 print("Failed to grant affiliate role.")
                 return self.send_error('Failed to register the NFT in the Booth contract', status=status.HTTP_400_BAD_REQUEST)
@@ -644,7 +649,7 @@ class BecomeAffiliateView(StandardAPIView):
             become_affiliate_tx = booth_contract_instance.functions.joinAffiliateProgram(int(ticket_id), uridium_wallet).buildTransaction(
                 {
                     "from": polygon_address,
-                    "nonce": polygon_web3.eth.getTransactionCount(payload['polygon_address']),
+                    "nonce": polygon_web3.eth.getTransactionCount(polygon_address),
                     "gasPrice": polygon_web3.eth.gas_price,
                     "gas": 600000,
                 }
@@ -654,19 +659,19 @@ class BecomeAffiliateView(StandardAPIView):
             become_affiliate_txReceipt = polygon_web3.eth.wait_for_transaction_receipt(become_affiliate_txHash)
             print(become_affiliate_txReceipt)
             if become_affiliate_txReceipt['status'] == 1:
-                print(f"User {payload['polygon_address']} Successfully became Affiliate for NFT: {ticket_id}")
+                print(f"User {polygon_address} Successfully became Affiliate for NFT: {ticket_id}")
                 return self.send_response(True, status=status.HTTP_200_OK)
             else:
-                print(f"User {payload['polygon_address']} FAILED to become Affiliate for NFT: {ticket_id}")
+                print(f"User {polygon_address} FAILED to become Affiliate for NFT: {ticket_id}")
                 return self.send_error('Failed to Become Affiliate', status=status.HTTP_400_BAD_REQUEST)
         else:
-            print(f"User {payload['polygon_address']} already has affiliate Role")
+            print(f"User {polygon_address} already has affiliate Role")
             # return self.send_error(False)
-            print(f"User {payload['polygon_address']} joining Affiliate Program for NFT: {ticket_id}")
+            print(f"User {polygon_address} joining Affiliate Program for NFT: {ticket_id}")
             become_affiliate_tx = booth_contract_instance.functions.joinAffiliateProgram(int(ticket_id), uridium_wallet).buildTransaction(
                 {
                     "from": polygon_address,
-                    "nonce": polygon_web3.eth.getTransactionCount(payload['polygon_address']),
+                    "nonce": polygon_web3.eth.getTransactionCount(polygon_address),
                     "gasPrice": polygon_web3.eth.gas_price,
                     "gas": 600000,
                 }
@@ -676,24 +681,24 @@ class BecomeAffiliateView(StandardAPIView):
             become_affiliate_txReceipt = polygon_web3.eth.wait_for_transaction_receipt(become_affiliate_txHash)
             # print(become_affiliate_txReceipt)
             if become_affiliate_txReceipt['status'] == 1:
-                print(f"User {payload['polygon_address']} Successfully became Affiliate for NFT: {ticket_id}")
+                print(f"User {polygon_address} Successfully became Affiliate for NFT: {ticket_id}")
                 return self.send_response(True, status=status.HTTP_200_OK)
             else:
-                print(f"User {payload['polygon_address']} FAILED to become Affiliate for NFT: {ticket_id}")
+                print(f"User {polygon_address} FAILED to become Affiliate for NFT: {ticket_id}")
                 return self.send_error('Failed to Become Affiliate', status=status.HTTP_400_BAD_REQUEST)
 
 
 class VerifyAffiliateView(StandardAPIView):
     permission_classes = (permissions.AllowAny,)
     def post(self, request, format=None):
-        payload = validate_token(request)
-        polygon_address = payload['polygon_address']
+        # payload = validate_token(request)
         data= request.data
+        polygon_address = data['polygon_address']
         # Build Instance of Contract
-        ticket_id = int(data['ticketId'])
+        ticket_id = int(data['ticket_id'])
         # print(ticket_id)
         abi_booth = get_polygon_contract_abi(booth_contract)
         booth_contract_instance = polygon_web3.eth.contract(abi=abi_booth, address=booth_contract)
         # balance = contract.functions.get_balance(payload['polygon_address'])
-        result = booth_contract_instance.functions.verifyAffiliate(int(ticket_id),polygon_address).call()
+        result = booth_contract_instance.functions.verifyAffiliate(ticket_id,polygon_address).call()
         return self.send_response(result, status=status.HTTP_200_OK)
